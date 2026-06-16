@@ -1,0 +1,454 @@
+-- [[ VANILLAHUB / XQUARTLY v50 - KRYPTON THEME EDITION ]]
+-- Özellikler: UI Sync Config, Ambient/Fog Motoru, Smart Raycast ESP, Full Menu
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Lighting = game:GetService("Lighting")
+local HttpService = game:GetService("HttpService")
+local LocalPlayer = Players.LocalPlayer
+local CurrentCamera = workspace.CurrentCamera
+
+-- ESKİ ESP TEMİZLİĞİ
+pcall(function()
+    if CurrentCamera then
+        for _, child in pairs(CurrentCamera:GetChildren()) do
+            if child:IsA("Highlight") and string.find(child.Name, "VH_ESP_") then child:Destroy() end
+        end
+    end
+end)
+
+-- ==========================================
+-- MERKEZİ VERİ TABANI
+-- ==========================================
+local Config = {
+    -- Combat
+    Aimbot = false, DisableOnReload = true, EnableOnScope = false,
+    ReactionTime = 0, SwitchDelay = 0, AimbotType = "Linear",
+    Smoothing = 1, Speed = 0.1, Strength = 1,
+    TargetFOV = 150, TargetType = "Surface", Reduction = 0, Center = true,
+    PartSelection = "Head", AimPart = "Head", Triggerbot = false,
+    Mevlana = false, MevlanaSpeed = 80, NoRecoil = false, ThirdPerson = false,
+    
+    -- Visuals (Bağımsız Sistemler)
+    AmbientEnabled = false, Ambient = Color3.fromRGB(150, 150, 200),
+    TimeEnabled = false, Time = 12, 
+    BrightnessEnabled = false, BrightnessValue = 2,
+    FogEnabled = false, FogEnd = 10000, FogColor = Color3.fromRGB(255, 255, 255),
+    DisableShadows = false,
+    ESP = false, SkeletonESP = false, WallColor = Color3.fromRGB(255, 0, 0), VisibleColor = Color3.fromRGB(0, 255, 0),
+    
+    -- Extras & Cosmetics
+    HitFeedback = false, HitSound = true, HitVolume = 1,
+    KillFeedback = false, KillFlash = false, KillChams = false,
+    CosmEn = true, SkinEn = false, WeapSel = "Assault Rifle", UnlEn = false,
+    
+    -- Misc & Theme
+    ThemeSelect = "Dark", ShowWM = true, MenuKeyName = "RightControl",
+    
+    -- Config System
+    NewConfName = "MyConfig", SelectedConfig = ""
+}
+
+-- CONFIG KLASÖR SİSTEMİ
+local ConfigFolder = "VanillaHub_Configs"
+if makefolder and not isfolder(ConfigFolder) then pcall(function() makefolder(ConfigFolder) end) end
+
+local function GetSavedConfigs()
+    local list = {}
+    pcall(function()
+        if listfiles and isfolder and isfolder(ConfigFolder) then
+            for _, file in ipairs(listfiles(ConfigFolder)) do
+                if file:match("%.json$") then
+                    local name = file:match("([^/\\]+)%.json$")
+                    if name then table.insert(list, name) end
+                end
+            end
+        end
+    end)
+    if #list == 0 then return {"Bulunamadi"} end
+    return list
+end
+
+-- ==========================================
+-- 🎨 FLUENT UI ENTEGRASYONU
+-- ==========================================
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+
+local Window = Fluent:CreateWindow({
+    Title = "VanillaHub", SubTitle = "v50 Pro", TabWidth = 160, Size = UDim2.fromOffset(680, 500),
+    Acrylic = true, Theme = Config.ThemeSelect, MinimizeKey = Enum.KeyCode[Config.MenuKeyName]
+})
+
+local Tabs = {
+    Combat = Window:AddTab({ Title = "Combat", Icon = "swords" }),
+    Visuals = Window:AddTab({ Title = "Visuals", Icon = "globe" }),
+    Extras = Window:AddTab({ Title = "Extras", Icon = "sparkles" }),
+    Cosmetics = Window:AddTab({ Title = "Cosmetics", Icon = "shirt" }),
+    Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
+}
+
+local Flags = {} -- Arayüzü güncellemek için köprü görevi görecek.
+
+-- ==========================================
+-- 🛡️ WATERMARK
+-- ==========================================
+local Watermark
+if Drawing and Drawing.new then
+    pcall(function()
+        Watermark = Drawing.new("Text") Watermark.Text = "VanillaHub | v50" Watermark.Size = 18
+        Watermark.Color = Color3.fromRGB(255, 255, 255) Watermark.Outline = true
+        Watermark.Position = Vector2.new(20, 20) Watermark.Visible = Config.ShowWM
+    end)
+end
+
+-- ==========================================
+-- ⚔️ COMBAT SEKMESİ
+-- ==========================================
+local C_Aimbot = Tabs.Combat:AddSection("Aimbot & Hedefleme")
+Flags.Aimbot = Tabs.Combat:AddToggle("AimToggle", {Title = "Enabled", Default = Config.Aimbot })
+Flags.Aimbot:OnChanged(function(v) Config.Aimbot = v end)
+
+Flags.DisableOnReload = Tabs.Combat:AddToggle("DisableRel", {Title = "Disable On Reload", Default = Config.DisableOnReload })
+Flags.DisableOnReload:OnChanged(function(v) Config.DisableOnReload = v end)
+
+Flags.EnableOnScope = Tabs.Combat:AddToggle("OnlyScope", {Title = "Enable Only On Scope", Default = Config.EnableOnScope })
+Flags.EnableOnScope:OnChanged(function(v) Config.EnableOnScope = v end)
+
+Flags.SwitchDelay = Tabs.Combat:AddSlider("SwitchDel", {Title = "Switch Delay (s)", Default = Config.SwitchDelay, Min = 0, Max = 5, Rounding = 1})
+Flags.SwitchDelay:OnChanged(function(v) Config.SwitchDelay = v end)
+
+Flags.ReactionTime = Tabs.Combat:AddSlider("ReactionT", {Title = "Reaction Time (s)", Default = Config.ReactionTime, Min = 0, Max = 1, Rounding = 1})
+Flags.ReactionTime:OnChanged(function(v) Config.ReactionTime = v end)
+
+Flags.AimbotType = Tabs.Combat:AddDropdown("AimType", {Title = "Aimbot Type", Values = {"Linear", "Exponential", "Dynamic"}, Default = 1})
+Flags.AimbotType:OnChanged(function(v) Config.AimbotType = v end)
+
+Flags.Smoothing = Tabs.Combat:AddSlider("Smooth", {Title = "Smoothing", Default = Config.Smoothing, Min = 1, Max = 10, Rounding = 1})
+Flags.Smoothing:OnChanged(function(v) Config.Smoothing = v end)
+
+Flags.Speed = Tabs.Combat:AddSlider("AimSpeed", {Title = "Speed", Default = Config.Speed, Min = 0.1, Max = 2, Rounding = 1})
+Flags.Speed:OnChanged(function(v) Config.Speed = v end)
+
+Flags.Strength = Tabs.Combat:AddSlider("AimStrength", {Title = "Strength", Default = Config.Strength, Min = 0.1, Max = 5, Rounding = 1})
+Flags.Strength:OnChanged(function(v) Config.Strength = v end)
+
+local C_Target = Tabs.Combat:AddSection("Target & FOV")
+Flags.TargetFOV = Tabs.Combat:AddSlider("FovSlider", {Title = "FOV Boyutu", Default = Config.TargetFOV, Min = 50, Max = 800, Rounding = 0})
+Flags.TargetFOV:OnChanged(function(v) Config.TargetFOV = v end)
+
+Flags.PartSelection = Tabs.Combat:AddDropdown("PartSel", {Title = "Part Selection", Values = {"Head", "Torso", "Closest"}, Default = 1})
+Flags.PartSelection:OnChanged(function(v) 
+    Config.PartSelection = v 
+    Config.AimPart = (v == "Closest") and "Torso" or v 
+end)
+
+local C_Other = Tabs.Combat:AddSection("Ragebot & Automation")
+Flags.Triggerbot = Tabs.Combat:AddToggle("TrigToggle", {Title = "Triggerbot Enabled", Default = Config.Triggerbot })
+Flags.Triggerbot:OnChanged(function(v) Config.Triggerbot = v end)
+
+Flags.Mevlana = Tabs.Combat:AddToggle("MevlanaToggle", {Title = "Ragebot (Mevlana)", Default = Config.Mevlana })
+Flags.Mevlana:OnChanged(function(v) Config.Mevlana = v end)
+
+Flags.MevlanaSpeed = Tabs.Combat:AddSlider("SpinSlider", {Title = "Spin Speed", Default = Config.MevlanaSpeed, Min = 16, Max = 250, Rounding = 0})
+Flags.MevlanaSpeed:OnChanged(function(v) Config.MevlanaSpeed = v end)
+
+Flags.NoRecoil = Tabs.Combat:AddToggle("RecoilToggle", {Title = "No Recoil", Default = Config.NoRecoil })
+Flags.NoRecoil:OnChanged(function(v) Config.NoRecoil = v end)
+
+-- ==========================================
+-- 🌍 VISUALS SEKMESİ (AYRI MODÜLLER)
+-- ==========================================
+local V_ESP = Tabs.Visuals:AddSection("ESP")
+Flags.ESP = Tabs.Visuals:AddToggle("ESPTog", {Title = "ESP Enabled", Default = Config.ESP })
+Flags.ESP:OnChanged(function(v) Config.ESP = v end)
+
+Flags.SkeletonESP = Tabs.Visuals:AddToggle("SkelTog", {Title = "Skeleton Mode", Default = Config.SkeletonESP })
+Flags.SkeletonESP:OnChanged(function(v) Config.SkeletonESP = v end)
+
+Flags.WallColor = Tabs.Visuals:AddColorpicker("WallC", {Title = "Wall Color (Behind)", Default = Config.WallColor})
+Flags.WallColor:OnChanged(function(v) Config.WallColor = v end)
+
+Flags.VisibleColor = Tabs.Visuals:AddColorpicker("VisC", {Title = "Visible Color (Front)", Default = Config.VisibleColor})
+Flags.VisibleColor:OnChanged(function(v) Config.VisibleColor = v end)
+
+local V_Lighting = Tabs.Visuals:AddSection("Environment (Atmosfer & Renkler)")
+Flags.AmbientEnabled = Tabs.Visuals:AddToggle("AmbEn", {Title = "Ambient Enabled", Default = Config.AmbientEnabled })
+Flags.AmbientEnabled:OnChanged(function(v) Config.AmbientEnabled = v end)
+
+Flags.Ambient = Tabs.Visuals:AddColorpicker("Ambient", {Title = "Ambient Color", Default = Config.Ambient})
+Flags.Ambient:OnChanged(function(v) Config.Ambient = v end)
+
+Flags.TimeEnabled = Tabs.Visuals:AddToggle("ClockT", {Title = "Time Override", Default = Config.TimeEnabled })
+Flags.TimeEnabled:OnChanged(function(v) Config.TimeEnabled = v end)
+
+Flags.Time = Tabs.Visuals:AddSlider("TimeS", {Title = "Time", Default = Config.Time, Min = 0, Max = 24, Rounding = 1})
+Flags.Time:OnChanged(function(v) Config.Time = v end)
+
+Flags.BrightnessEnabled = Tabs.Visuals:AddToggle("BrightT", {Title = "Brightness Override", Default = Config.BrightnessEnabled })
+Flags.BrightnessEnabled:OnChanged(function(v) Config.BrightnessEnabled = v end)
+
+Flags.BrightnessValue = Tabs.Visuals:AddSlider("BrightV", {Title = "Value", Default = Config.BrightnessValue, Min = 0, Max = 10, Rounding = 1})
+Flags.BrightnessValue:OnChanged(function(v) Config.BrightnessValue = v end)
+
+Flags.FogEnabled = Tabs.Visuals:AddToggle("FogT", {Title = "Fog Override", Default = Config.FogEnabled })
+Flags.FogEnabled:OnChanged(function(v) Config.FogEnabled = v end)
+
+Flags.FogColor = Tabs.Visuals:AddColorpicker("FogC", {Title = "Fog Color", Default = Config.FogColor})
+Flags.FogColor:OnChanged(function(v) Config.FogColor = v end)
+
+Flags.FogEnd = Tabs.Visuals:AddSlider("FogEnd", {Title = "Fog End", Default = Config.FogEnd, Min = 100, Max = 100000, Rounding = 0})
+Flags.FogEnd:OnChanged(function(v) Config.FogEnd = v end)
+
+Flags.DisableShadows = Tabs.Visuals:AddToggle("DisableShad", {Title = "Disable Global Shadows", Default = Config.DisableShadows })
+Flags.DisableShadows:OnChanged(function(v) Config.DisableShadows = v end)
+
+-- ==========================================
+-- ✨ EXTRAS & 👕 COSMETICS SEKMELERİ
+-- ==========================================
+local E_Feedback = Tabs.Extras:AddSection("Hit/Kill Feedback")
+Flags.HitFeedback = Tabs.Extras:AddToggle("HitEn", {Title = "Hit Feedback Enabled", Default = Config.HitFeedback })
+Flags.HitFeedback:OnChanged(function(v) Config.HitFeedback = v end)
+
+Flags.HitSound = Tabs.Extras:AddToggle("PlayS", {Title = "Hit Sound", Default = Config.HitSound })
+Flags.HitSound:OnChanged(function(v) Config.HitSound = v end)
+
+Flags.HitVolume = Tabs.Extras:AddSlider("VolS", {Title = "Volume", Default = Config.HitVolume, Min = 0, Max = 2, Rounding = 1})
+Flags.HitVolume:OnChanged(function(v) Config.HitVolume = v end)
+
+Flags.KillFeedback = Tabs.Extras:AddToggle("KillEn", {Title = "Kill Feedback Enabled", Default = Config.KillFeedback })
+Flags.KillFeedback:OnChanged(function(v) Config.KillFeedback = v end)
+
+local Co_General = Tabs.Cosmetics:AddSection("Cosmetics (Visual)")
+Flags.CosmEn = Tabs.Cosmetics:AddToggle("CosmEn", {Title = "Cosmetics Enabled", Default = Config.CosmEn })
+Flags.CosmEn:OnChanged(function(v) Config.CosmEn = v end)
+
+Flags.SkinEn = Tabs.Cosmetics:AddToggle("SkinEn", {Title = "Skin Changer Enabled", Default = Config.SkinEn })
+Flags.SkinEn:OnChanged(function(v) Config.SkinEn = v end)
+
+Flags.WeapSel = Tabs.Cosmetics:AddDropdown("WeapSel", {Title = "Weapon", Values = {"Assault Rifle", "Sniper", "Pistol"}, Default = 1})
+Flags.WeapSel:OnChanged(function(v) Config.WeapSel = v end)
+
+Flags.UnlEn = Tabs.Cosmetics:AddToggle("UnlEn", {Title = "Unlock All Enabled", Default = Config.UnlEn })
+Flags.UnlEn:OnChanged(function(v) Config.UnlEn = v end)
+
+-- ==========================================
+-- ⚙️ SETTINGS SEKMESİ (JSON & UI SİSTEMİ FİXLENDİ)
+-- ==========================================
+local S_Menu = Tabs.Settings:AddSection("Menu Settings")
+
+Tabs.Settings:AddKeybind("MenuKeybd", {Title = "Menu Keybind", Mode = "Toggle", Default = Config.MenuKeyName, Callback = function() end}):OnChanged(function(v)
+    Config.MenuKeyName = v.Name or "RightControl"
+    Window.MinimizeKey = Enum.KeyCode[Config.MenuKeyName]
+end)
+
+Flags.ThemeSelect = Tabs.Settings:AddDropdown("ThemeSelect", {Title = "Menu Theme", Values = {"Dark", "Darker", "Light", "Aqua", "Amethyst", "Rose"}, Default = 1})
+Flags.ThemeSelect:OnChanged(function(v) 
+    Config.ThemeSelect = v 
+    Fluent:SetTheme(v) 
+end)
+
+Flags.ShowWM = Tabs.Settings:AddToggle("ShowWM", {Title = "Show Watermark", Default = Config.ShowWM })
+Flags.ShowWM:OnChanged(function(v) 
+    Config.ShowWM = v 
+    if Watermark then Watermark.Visible = v end 
+end)
+
+local S_Config = Tabs.Settings:AddSection("Config Manager")
+Tabs.Settings:AddInput("NewConfName", {Title = "Save Config As:", Default = "MyConfig"}):OnChanged(function(v) Config.NewConfName = v end)
+
+local ConfigDropdown = Tabs.Settings:AddDropdown("ConfSelect", {Title = "Select Config", Values = GetSavedConfigs(), Default = 1})
+ConfigDropdown:OnChanged(function(v) Config.SelectedConfig = v end)
+
+Tabs.Settings:AddButton({Title = "Refresh List", Callback = function() ConfigDropdown:SetValues(GetSavedConfigs()) end})
+
+-- KAYDET (SAVE)
+Tabs.Settings:AddButton({Title = "Save Config", Callback = function() 
+    if writefile then
+        local saveTable = {}
+        for k, v in pairs(Config) do
+            if typeof(v) == "Color3" then 
+                saveTable[k] = {v.R, v.G, v.B} -- Renkleri düzgün formatta JSON'a yaz
+            else 
+                saveTable[k] = v 
+            end
+        end
+        writefile(ConfigFolder .. "/" .. Config.NewConfName .. ".json", HttpService:JSONEncode(saveTable))
+        ConfigDropdown:SetValues(GetSavedConfigs())
+        Fluent:Notify({Title="VanillaHub", Content="Config Kaydedildi: " .. Config.NewConfName, Duration=3})
+    end
+end})
+
+-- YÜKLE (LOAD) VE ARAYÜZÜ ANINDA GÜNCELLE
+Tabs.Settings:AddButton({Title = "Load Selected Config", Callback = function() 
+    local filePath = ConfigFolder .. "/" .. Config.SelectedConfig .. ".json"
+    if readfile and isfile and isfile(filePath) then
+        local success, decoded = pcall(function() return HttpService:JSONDecode(readfile(filePath)) end)
+        if success and type(decoded) == "table" then
+            for k, v in pairs(decoded) do
+                local val = v
+                -- Renkleri Tablo Halinden Color3'e Çevir
+                if type(v) == "table" and #v == 3 then 
+                    val = Color3.new(v[1], v[2], v[3]) 
+                end
+                
+                Config[k] = val
+                
+                -- SİHRİN OLDUĞU YER: Arayüzdeki Şalterleri ve Renkleri Görsel Olarak Güncelle
+                if Flags[k] then
+                    pcall(function()
+                        Flags[k]:SetValue(val)
+                    end)
+                end
+            end
+            Fluent:Notify({Title="VanillaHub", Content="Arayüz ve Ayarlar Yüklendi!", Duration=3})
+        else
+            Fluent:Notify({Title="Hata", Content="Config dosyası okunamadı.", Duration=3})
+        end
+    end
+end})
+
+-- ==========================================
+-- 🛠️ OYUN MOTORU & DÖNGÜLERİ (LOGIC)
+-- ==========================================
+
+-- AMBIENT & FOG MOTORU (HEPSİ BAĞIMSIZ HALE GETİRİLDİ)
+local OrigLighting = {Ambient = Lighting.Ambient, OutdoorAmbient = Lighting.OutdoorAmbient, ClockTime = Lighting.ClockTime, Brightness = Lighting.Brightness, FogEnd = Lighting.FogEnd, FogColor = Lighting.FogColor, GlobalShadows = Lighting.GlobalShadows}
+
+RunService.RenderStepped:Connect(function()
+    -- Ortam Rengi
+    if Config.AmbientEnabled then
+        Lighting.Ambient = Config.Ambient 
+        Lighting.OutdoorAmbient = Config.Ambient 
+        Lighting.ColorShift_Top = Config.Ambient
+    else
+        Lighting.Ambient = OrigLighting.Ambient 
+        Lighting.OutdoorAmbient = OrigLighting.OutdoorAmbient 
+        Lighting.ColorShift_Top = Color3.fromRGB(0, 0, 0)
+    end
+    
+    -- Zaman ve Parlaklık
+    if Config.TimeEnabled then Lighting.ClockTime = Config.Time else Lighting.ClockTime = OrigLighting.ClockTime end
+    if Config.BrightnessEnabled then Lighting.Brightness = Config.BrightnessValue else Lighting.Brightness = OrigLighting.Brightness end
+    
+    -- Sis Kontrolü
+    if Config.FogEnabled then 
+        Lighting.FogEnd = Config.FogEnd 
+        Lighting.FogColor = Config.FogColor 
+    else 
+        Lighting.FogEnd = OrigLighting.FogEnd
+        Lighting.FogColor = OrigLighting.FogColor 
+    end
+    
+    -- Gölgeler
+    if Config.DisableShadows then Lighting.GlobalShadows = false else Lighting.GlobalShadows = OrigLighting.GlobalShadows end
+end)
+
+-- SMART RAYCAST FONKSİYONU (DUVAR KONTROLÜ)
+local function IsPlayerVisible(targetPlayer)
+    if not targetPlayer.Character then return false end
+    local head = targetPlayer.Character:FindFirstChild("Head") or targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not head then return false end
+
+    local origin = CurrentCamera.CFrame.Position
+    local direction = head.Position - origin
+    local ignoreList = {LocalPlayer.Character, targetPlayer.Character}
+    
+    for i = 1, 5 do
+        local rayParams = RaycastParams.new()
+        rayParams.FilterDescendantsInstances = ignoreList
+        rayParams.FilterType = Enum.RaycastFilterType.Exclude
+        rayParams.IgnoreWater = true
+        
+        local result = workspace:Raycast(origin, direction, rayParams)
+        if not result then return true end 
+        
+        local hit = result.Instance
+        if hit.Transparency >= 0.8 or not hit.CanCollide then
+            table.insert(ignoreList, hit) 
+        else
+            return false 
+        end
+    end
+    return false
+end
+
+-- Aimbot Hedef Bulucu
+local function GetAimPart(character)
+    if Config.AimPart == "Head" then return character:FindFirstChild("Head")
+    elseif Config.AimPart == "Torso" then return character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso")
+    end return character:FindFirstChild("Head")
+end
+
+local FOVCircle
+if Drawing then pcall(function() FOVCircle = Drawing.new("Circle") FOVCircle.Thickness = 1.5 FOVCircle.Color = Color3.fromRGB(255, 100, 70) FOVCircle.Filled = false FOVCircle.Visible = false end) end
+local currentAngle = 0
+local CurrentTargetPart = nil 
+
+RunService:BindToRenderStep("VH_CoreEngine", Enum.RenderPriority.Camera.Value + 1, function()
+    if not CurrentCamera then return end
+    local char = LocalPlayer.Character
+
+    if char and Config.Mevlana then
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            currentAngle = (currentAngle + math.rad(Config.MevlanaSpeed * 1.8)) % (math.pi * 2)
+            hrp.CFrame = CFrame.new(hrp.Position) * CFrame.Angles(0, currentAngle, 0)
+        end
+    end
+
+    if Config.Aimbot then
+        local isAimKeyDown = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) or UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+        if isAimKeyDown then
+            local targetInvalid = not CurrentTargetPart or not CurrentTargetPart:IsDescendantOf(workspace)
+            if CurrentTargetPart and CurrentTargetPart.Parent and CurrentTargetPart.Parent:FindFirstChild("Humanoid") then
+                if CurrentTargetPart.Parent.Humanoid.Health <= 0 then targetInvalid = true end
+            end
+
+            if targetInvalid then
+                local closest = nil local dist = Config.TargetFOV
+                for _, p in pairs(Players:GetPlayers()) do
+                    if p ~= LocalPlayer and p.Character then
+                        local targetPart = GetAimPart(p.Character)
+                        if targetPart then
+                            local pos, on = CurrentCamera:WorldToViewportPoint(targetPart.Position)
+                            if on then
+                                local d = (Vector2.new(pos.X, pos.Y) - UserInputService:GetMouseLocation()).Magnitude
+                                if d < dist then dist = d closest = targetPart end
+                            end
+                        end
+                    end
+                end
+                CurrentTargetPart = closest
+            end
+            if CurrentTargetPart then CurrentCamera.CFrame = CFrame.lookAt(CurrentCamera.CFrame.Position, CurrentTargetPart.Position) end
+        else CurrentTargetPart = nil end
+    end
+
+    if FOVCircle then pcall(function() FOVCircle.Visible = Config.Aimbot FOVCircle.Radius = Config.TargetFOV FOVCircle.Position = UserInputService:GetMouseLocation() end) end
+
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then
+            pcall(function()
+                if p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                    if Config.ESP then
+                        local finalColor = IsPlayerVisible(p) and Config.VisibleColor or Config.WallColor
+                        
+                        local high = p.Character:FindFirstChild("VH_ESP")
+                        if not high then
+                            high = Instance.new("Highlight") high.Name = "VH_ESP"
+                            high.FillTransparency = 0.4 high.OutlineTransparency = 0.2 
+                            high.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                            high.Parent = p.Character
+                        end
+                        high.Adornee = p.Character high.FillColor = finalColor high.OutlineColor = finalColor
+                    else
+                        if p.Character and p.Character:FindFirstChild("VH_ESP") then p.Character.VH_ESP:Destroy() end
+                    end
+                end
+            end)
+        end
+    end
+end)
+
+Window:SelectTab(1)
